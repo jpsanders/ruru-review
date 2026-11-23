@@ -170,7 +170,10 @@ fails on the base, passes at the head
 fails on the base because it uses code the change adds
 .TP
 \fBpasses_without_change\fR
-passes on both sides: it does not prove the change (a finding)
+passes on both sides: it does not prove the change. High for a new test, medium for
+.TP
+
+an edited one (it may strengthen old behaviour); advice only when the change touches no source
 .TP
 \fBfails_on_head\fR
 does not pass at the head; reported, not scored
@@ -232,7 +235,7 @@ The \fBscore\fR is killed and timed out mutants over all that ran.
 .PP
 A change counts as an agent's when its pull request author is a listed bot (\fBRURU_PR_AUTHOR\fR), when a commit carries a listed co author trailer, when the branch starts with \fBclaude/\fR, \fBcopilot/\fR, \fBcodex/\fR, \fBcursor/\fR or \fBdevin/\fR (\fBGITHUB_HEAD_REF\fR in Actions, else the current branch), or when it has an \fBagent\fR label (\fB\-\-label\fR, or \fBRURU_PR_LABELS\fR, comma separated). Every list lives in \fB[tool.ruru.agents]\fR.
 .PP
-The gate fails on any high tamper finding, on any new or changed test that passes without the change (unless \fB\-\-refactor\fR), or on a mutation score under 70% with at least 5 mutants run. In \fBauto\fR mode it is enforced for agent changes only; for people it gives the same findings as advice.
+The gate fails on any high tamper finding, on any new test that passes without the change (unless \fB\-\-refactor\fR, or the change touches no source), or on a mutation score under 70% with at least 5 mutants run. In \fBauto\fR mode it is enforced for agent changes only; for people it gives the same findings as advice.
 .SH REPORT
 .PP
 \fB\-\-json\fR writes schema \fBruru.report/1\fR. \fBsummary\fR holds the counts, the score and the gate's result and reasons. \fBitems\fR holds one entry per finding or mutant, most serious first:

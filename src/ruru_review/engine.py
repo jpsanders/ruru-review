@@ -177,8 +177,8 @@ def _gate(summary: dict[str, Any], cfg: config.Config, enforce: bool, refactor: 
     if g.tamper_high and summary["tamper"]["high"]:
         reasons.append(f"{summary['tamper']['high']} high tamper finding(s)")
     ff = summary["fail_first"]
-    if g.fail_first and not refactor and ff["passes_without_change"]:
-        reasons.append(f"{ff['passes_without_change']} new or changed test(s) pass without the change")
+    if g.fail_first and not refactor and ff["new_passes_without_change"]:
+        reasons.append(f"{ff['new_passes_without_change']} new test(s) pass without the change")
     m = summary["mutants"]
     if m["score"] is not None and m["run"] >= g.min_mutants and m["score"] < g.min_score:
         reasons.append(f"diff mutation score {m['score']:.0%} is under {g.min_score:.0%}")
@@ -283,8 +283,14 @@ def review(opts: Options, ctx: Context | None = None) -> dict[str, Any]:
         if chosen or tests:
             notes.append("tests were not run")
 
+    # a refactor keeps tests green on both sides, and a change with no source can only add tests for existing code
+    ff_advice = opts.refactor or not src_changes
     for v in verdicts:
-        sev = "high" if v.status == failfirst.PASSES_WITHOUT and not opts.refactor else "info"
+        # a new test that passes on the base proves nothing; an edited old one may be strengthening old behaviour
+        if v.status != failfirst.PASSES_WITHOUT or ff_advice:
+            sev = "info"
+        else:
+            sev = "high" if v.new else "medium"
         hint = {
             failfirst.PASSES_WITHOUT: (
                 "this test passes on the base too, so it does not prove the change; assert what the change adds"
@@ -333,7 +339,12 @@ def review(opts: Options, ctx: Context | None = None) -> dict[str, Any]:
     test_only = bool(ctx.files) and not src_changes
     summary: dict[str, Any] = {
         "mutants": {"total": len(all_mutants), "run": ran, "score": score, **count},
-        "fail_first": {"tests": len(verdicts), **ff_count, "advice_only": opts.refactor},
+        "fail_first": {
+            "tests": len(verdicts),
+            **ff_count,
+            "new_passes_without_change": sum(1 for v in verdicts if v.status == failfirst.PASSES_WITHOUT and v.new),
+            "advice_only": ff_advice,
+        },
         "tamper": {
             "high": sum(1 for f in findings if f.severity == tamper.HIGH),
             "medium": sum(1 for f in findings if f.severity == tamper.MEDIUM),
@@ -342,7 +353,7 @@ def review(opts: Options, ctx: Context | None = None) -> dict[str, Any]:
     }
     agent = detect_agent(ctx, opts)
     enforce = opts.mode == "gate" or (opts.mode == "auto" and agent["agent"])
-    summary["gate"] = _gate(summary, cfg, enforce, opts.refactor)
+    summary["gate"] = _gate(summary, cfg, enforce, ff_advice)
     rank = {"tamper": 0, "mutant": 1, "fail_first": 2}
     items.sort(key=lambda i: (i["severity"] != "high", rank[i["check"]], i["file"], i["line"], i["id"]))
     return {
