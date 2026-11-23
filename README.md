@@ -51,7 +51,7 @@ ruru 1.0.0  base main (5c93625fee)  head working tree
   mutants     score 25%: 2 killed, 6 survived, 1 not covered, 0 skipped, of 9
   gate        FAIL for an agent change (branch claude/discount)
               - 3 high tamper finding(s)
-              - 3 new or changed test(s) pass without the change
+              - 1 new test(s) pass without the change
               - diff mutation score 25% is under 70%
 
 TAMPER      tests/test_calc.py:6 assertion-removed: test_add has 1 fewer assertion(s) than before
