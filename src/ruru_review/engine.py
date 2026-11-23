@@ -3,6 +3,7 @@
 import hashlib
 import os
 import time
+from collections.abc import Mapping
 from contextlib import ExitStack
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -95,17 +96,21 @@ def detect_agent(ctx: Context, opts: Options) -> dict[str, Any]:
     """
     a = ctx.cfg.agents
     reasons = []
-    author = opts.author or os.environ.get("RURU_PR_AUTHOR", "")
+    # GitHub's pull request variables describe the checkout CI made, not any other repository ruru is pointed at
+    workspace = os.environ.get("GITHUB_WORKSPACE", "")
+    in_ci_checkout = bool(workspace) and os.path.realpath(workspace) == os.path.realpath(ctx.root)
+    ci: Mapping[str, str] = os.environ if in_ci_checkout else {}
+    author = opts.author or ci.get("RURU_PR_AUTHOR", "")
     if author and author in a.bots:
         reasons.append(f"author {author}")
     branch = (
         opts.branch
-        or os.environ.get("GITHUB_HEAD_REF")
+        or ci.get("GITHUB_HEAD_REF")
         or gitio.git(ctx.root, "rev-parse", "--abbrev-ref", "HEAD", check=False).strip()
     )
     if any(branch.startswith(p) for p in a.branches):
         reasons.append(f"branch {branch}")
-    labels = set(opts.labels) | {x for x in os.environ.get("RURU_PR_LABELS", "").split(",") if x}
+    labels = set(opts.labels) | {x for x in ci.get("RURU_PR_LABELS", "").split(",") if x}
     for label in sorted(labels & set(a.labels)):
         reasons.append(f"label {label}")
     span = ctx.head_sha if ctx.merge_base == gitio.EMPTY_TREE else f"{ctx.merge_base}..{ctx.head_sha}"

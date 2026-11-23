@@ -240,3 +240,16 @@ def test_new_package_cannot_borrow_an_installed_copy(make_repo: Repo, py: str, t
     code, r = check(repo, py, tmp_path, "--head", "HEAD", "--max-mutants", "0")
     outcomes = {i["outcome"] for i in r["items"] if i["check"] == "fail_first"}
     assert outcomes == {"needs_new_code"}
+
+
+def test_ci_variables_apply_only_to_the_ci_checkout(
+    make_repo: Repo, py: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(branch="feature/x")
+    monkeypatch.setenv("GITHUB_HEAD_REF", "claude/from-ci")
+    monkeypatch.setenv("GITHUB_WORKSPACE", str(tmp_path / "elsewhere"))
+    _, r = check(repo, py, tmp_path, "--head", "HEAD", "--max-mutants", "0")
+    assert r["agent"]["agent"] is False
+    monkeypatch.setenv("GITHUB_WORKSPACE", str(repo))
+    _, r = check(repo, py, tmp_path, "--head", "HEAD", "--max-mutants", "0")
+    assert r["agent"]["reasons"] == ["branch claude/from-ci"]
