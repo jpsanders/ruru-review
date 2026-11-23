@@ -13,11 +13,11 @@ runner. Your own coding agent reads what ruru finds (`--json`), writes the missi
 ## Synopsis
 
 ```text
-ruru check   [--base REF] [--head REF] [--mode advise|gate|auto] [--json PATH] [--markdown PATH]
+ruru check   [--base REF | --all] [--head REF] [--mode advise|gate|auto] [--json PATH] [--markdown PATH]
              [--max-mutants N] [--time-budget S] [--workers N] [--test-command CMD] [--python PATH]
              [--refactor] [--label NAME] [--quiet] [--json-stdout] [--repo PATH]
 ruru audit   [--base REF] [--head REF] [--mode MODE] [--json PATH] [--markdown PATH]
-ruru mutants [--base REF] [--head REF] [--json-stdout]
+ruru mutants [--base REF | --all] [--head REF] [--json-stdout]
 ruru verify  ID [--base REF] [--head REF] [--test-command CMD] [--python PATH]
 ruru post    --report PATH [--pr N] [--comment-cap N] [--repository OWNER/NAME] [--event PATH]
 ruru mcp
@@ -47,6 +47,9 @@ Runs all three checks and prints a score card, then the findings, most serious f
   annotations.
 - `--mode` picks what a failed gate does: `gate` fails the run, `advise` never fails it, `auto` (the default) gates
   changes written by an agent and advises on the rest.
+- `--all` reviews the whole repository instead of a change: every source line is in scope, and the mutant cap
+  samples from all of them. The tamper audit and fail first need a base, so they are skipped. Use it to score a test
+  suite, or on a repository's first commit.
 - `--refactor` says the change is a refactor: tests should stay green on both sides, so fail first gives advice only.
 - `--max-mutants N` (default 60) and `--time-budget S` (default 600) cap the mutant run. Over the cap, ruru keeps the
   most valuable operators first and breaks ties with a shuffle seeded by the head SHA, so reruns on the same commit
@@ -109,7 +112,10 @@ Each takes `repo` (default: the server's working folder); the check tools also t
 ### Tamper audit
 
 ruru compares the base and head versions of every changed test module, `conftest.py`, test and coverage
-configuration, CI workflow and source file. Each finding is high severity unless it says otherwise.
+configuration, CI workflow and source file. Each finding is high severity unless it says otherwise. A test that
+was renamed (most of its body kept, or a close name and half its body) is compared with its old self, so a rename is
+not a removal. Coverage `omit` and `exclude` lines count only when they change coverage configuration that already
+existed.
 
 | Rule | What it means |
 |---|---|
@@ -120,7 +126,8 @@ configuration, CI workflow and source file. Each finding is high severity unless
 | `assert-true` | a test now asserts `True` |
 | `approx-widened` | a `pytest.approx` tolerance grew |
 | `cases-removed` | a `parametrize` list lost cases |
-| `skip-added` | a new `skip`, `skipif`, `xfail`, `pytest.skip()`, `unittest.skip`, `importorskip` or `pytestmark` |
+| `skip-added` | a new `skip`, `xfail`, `unittest.skip` or `pytestmark`; medium when conditional: `skipif`, |
+| | `importorskip`, or a `pytest.skip()` inside an `if` |
 | `empty-test` | a new test asserts nothing and calls nothing |
 | `assertion-in-try` | assertions were wrapped in `try`/`except` |
 | `except-pass` | a test swallows an exception with `pass` |

@@ -1,0 +1,28 @@
+# ruru
+
+> A pull request reviewer for code written by AI agents. For a Python change it runs a tamper audit of the tests
+> (removed, loosened or skipped), fail first (do the new tests fail without the change?) and mutants on the changed
+> lines (would the tests catch a planted bug?). Deterministic: no model calls, no API keys, standard library only.
+> Command `ruru`, PyPI `ruru-review`, GitHub Action `jpsanders/ruru-review`, MCP server `ruru mcp`.
+
+## Use it before you say a change is done
+
+1. `ruru check --json ruru-report.json` (the working tree against main; `--base` names another branch).
+2. For each item with `outcome: survived`, write a test that fails with the mutant (`before` changed to `after` at
+   `file:line`) and passes without it. For `passes_without_change`, assert what the change adds. For each tamper
+   finding, restore the test.
+3. `ruru verify <id>` until each survivor is killed. Never weaken, skip or delete a test to pass.
+4. Exit codes: 0 pass or advice, 1 the gate failed, 2 ruru could not test the project.
+
+## Docs
+
+- [README](https://github.com/jpsanders/ruru-review/blob/main/README.md): what it catches, install, Action, agents
+- [Manual](https://github.com/jpsanders/ruru-review/blob/main/docs/MANUAL.md): every command, rule, operator,
+  the report schema `ruru.report/1` and configuration (`ruru guide` prints it)
+- [Skill](https://github.com/jpsanders/ruru-review/blob/main/skills/ruru/SKILL.md): the agent loop
+- [AGENTS.md](https://github.com/jpsanders/ruru-review/blob/main/AGENTS.md): working in this repository
+
+## MCP tools
+
+`ruru_check`, `ruru_survivors`, `ruru_explain`, `ruru_verify`, `ruru_audit`. Configure with
+`{"command": "uvx", "args": ["--from", "ruru-review", "ruru", "mcp"]}`.

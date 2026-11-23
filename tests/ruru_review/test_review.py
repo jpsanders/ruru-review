@@ -217,3 +217,26 @@ def test_selection_keeps_every_test_of_a_line(make_repo: Repo, py: str, tmp_path
     aor = next(i for i in r["items"] if i["rule"] == "AOR")
     assert aor["outcome"] == "killed"
     assert aor["tests"] == ["tests/test_calc.py::test_a_weak", "tests/test_calc.py::test_b_strong"]
+
+
+def test_whole_repository_mode(make_repo: Repo, py: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    repo = make_repo()
+    code, r = check(repo, py, tmp_path, "--all", "--head", "HEAD", "--mode", "advise")
+    assert code == 0 and r["base"]["ref"] == "(whole repository)"
+    m = r["summary"]["mutants"]
+    assert m["total"] > 9 and m["run"] > 0
+    assert {i["check"] for i in r["items"]} == {"mutant"} and r["summary"]["tamper"]["high"] == 0
+    assert main(["mutants", "--repo", str(repo), "--all"]) == 0
+    assert capsys.readouterr().out.strip().endswith(f"{m['total']} mutant(s)")
+
+
+def test_new_package_cannot_borrow_an_installed_copy(make_repo: Repo, py: str, tmp_path: Path) -> None:
+    from tests.ruru_review.conftest import BASE_TESTS, HEAD_SRC
+
+    # the base has no calc package at all; the head adds it with a test
+    repo = make_repo(
+        base={"README.md": "x\n"}, head={"src/calc/__init__.py": HEAD_SRC, "tests/test_calc.py": BASE_TESTS}
+    )
+    code, r = check(repo, py, tmp_path, "--head", "HEAD", "--max-mutants", "0")
+    outcomes = {i["outcome"] for i in r["items"] if i["check"] == "fail_first"}
+    assert outcomes == {"needs_new_code"}

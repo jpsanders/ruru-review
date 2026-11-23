@@ -15,9 +15,12 @@ import sys
 from collections.abc import Callable, Sequence
 from importlib import resources
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from ruru_review import __version__, engine, github, gitio, mcp, mutants, pyast, render, runner
+from ruru_review import __version__
+
+if TYPE_CHECKING:
+    from ruru_review import engine, mutants
 
 PROG = "ruru"
 
@@ -39,6 +42,8 @@ def _options(args: argparse.Namespace) -> engine.Options:
     :param args: Parsed arguments
     :returns: Options
     """
+    from ruru_review import engine
+
     quiet = getattr(args, "quiet", False) or getattr(args, "json_stdout", False)
     return engine.Options(
         repo=Path(args.repo),
@@ -50,6 +55,7 @@ def _options(args: argparse.Namespace) -> engine.Options:
         test_command=getattr(args, "test_command", None),
         python=getattr(args, "python", None),
         refactor=getattr(args, "refactor", False),
+        whole=getattr(args, "all", False),
         workers=getattr(args, "workers", None),
         labels=[x for x in (getattr(args, "label", None) or []) if x],
         progress=None if quiet else (lambda msg: print(f"ruru: {msg}", file=sys.stderr, flush=True)),
@@ -63,6 +69,8 @@ def _write(path: str | None, text: str) -> None:
 
 
 def _deliver(report: dict[str, Any], args: argparse.Namespace) -> None:
+    from ruru_review import github, render
+
     _write(args.json, json.dumps(report, indent=2, sort_keys=True) + "\n")
     _write(args.markdown, render.markdown(report))
     _write(getattr(args, "sarif", None), json.dumps(github.sarif(report), indent=2) + "\n")
@@ -93,6 +101,8 @@ def cmd_check(args: argparse.Namespace) -> int:
     :param args: Parsed arguments
     :returns: 0 pass or advice, 1 the gate failed, 2 an environment problem
     """
+    from ruru_review import engine, gitio, runner
+
     try:
         report = engine.review(_options(args))
     except (runner.EnvironmentProblem, gitio.GitError, ValueError, OSError) as exc:
@@ -109,6 +119,8 @@ def cmd_audit(args: argparse.Namespace) -> int:
     :param args: Parsed arguments
     :returns: Exit code
     """
+    from ruru_review import engine, gitio
+
     opts = _options(args)
     opts.run_tests = False
     opts.max_mutants = 0
@@ -122,6 +134,8 @@ def cmd_audit(args: argparse.Namespace) -> int:
 
 
 def _all_mutants(ctx: engine.Context) -> list[mutants.Mutant]:
+    from ruru_review import gitio, mutants, pyast
+
     out: list[mutants.Mutant] = []
     for f in ctx.files:
         if f.new_path and f.added and pyast.is_source_file(f.new_path, ctx.cfg.tests):
@@ -138,6 +152,8 @@ def cmd_mutants(args: argparse.Namespace) -> int:
     :param args: Parsed arguments
     :returns: Exit code
     """
+    from ruru_review import engine, gitio
+
     try:
         ctx = engine.resolve(_options(args))
     except (gitio.GitError, ValueError) as exc:
@@ -160,6 +176,8 @@ def cmd_verify(args: argparse.Namespace) -> int:
     :param args: Parsed arguments
     :returns: 0 when killed, 1 when it still survives, 2 on a problem
     """
+    from ruru_review import engine, gitio, runner
+
     opts = _options(args)
     try:
         ctx = engine.resolve(opts)
@@ -235,6 +253,8 @@ def cmd_post(args: argparse.Namespace) -> int:
     :returns: 0 posted, 2 on any mismatch or refusal
     :raises PostError: Caught here, for a missing token or event
     """
+    from ruru_review import github
+
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
     repo = args.repository or os.environ.get("GITHUB_REPOSITORY", "")
     event_path = args.event or os.environ.get("GITHUB_EVENT_PATH")
@@ -259,6 +279,8 @@ def cmd_mcp(args: argparse.Namespace) -> int:
     :param args: Parsed arguments
     :returns: Exit code
     """
+    from ruru_review import mcp
+
     return mcp.serve()
 
 
@@ -311,9 +333,11 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--time-budget", type=float, metavar="S", help="seconds for mutants (default 600)")
     check.add_argument("--workers", type=int, metavar="N", help="parallel worktrees (default 2)")
     check.add_argument("--refactor", action="store_true", help="a refactor: fail first gives advice only")
+    check.add_argument("--all", action="store_true", help="score the whole repository's tests, not a change")
     audit = add("audit", cmd_audit, "run only the static tamper audit")
     outputs(audit)
-    add("mutants", cmd_mutants, "list the mutants of the change without running them")
+    mut = add("mutants", cmd_mutants, "list the mutants of the change without running them")
+    mut.add_argument("--all", action="store_true", help="every mutant in the repository, not only the change")
     verify = add("verify", cmd_verify, "rerun one mutant against the current tests")
     verify.add_argument("id", help="the mutant id from a report")
     testing(verify)

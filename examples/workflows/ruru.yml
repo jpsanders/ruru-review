@@ -26,7 +26,7 @@ jobs:
           python -m pip install -e . pytest pytest-cov
 
       - name: "ruru"
-        uses: jpsanders/ruru-review@main
+        uses: jpsanders/ruru-review@1.0.0
         with:
           report: ruru/ruru-report.json
 
