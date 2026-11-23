@@ -8,11 +8,11 @@ Every check is deterministic. ruru calls no model, needs no API key, and your co
 .SH SYNOPSIS
 .RS 4
 .nf
-ruru check   [\-\-base REF] [\-\-head REF] [\-\-mode advise|gate|auto] [\-\-json PATH] [\-\-markdown PATH]
+ruru check   [\-\-base REF | \-\-all] [\-\-head REF] [\-\-mode advise|gate|auto] [\-\-json PATH] [\-\-markdown PATH]
              [\-\-max\-mutants N] [\-\-time\-budget S] [\-\-workers N] [\-\-test\-command CMD] [\-\-python PATH]
              [\-\-refactor] [\-\-label NAME] [\-\-quiet] [\-\-json\-stdout] [\-\-repo PATH]
 ruru audit   [\-\-base REF] [\-\-head REF] [\-\-mode MODE] [\-\-json PATH] [\-\-markdown PATH]
-ruru mutants [\-\-base REF] [\-\-head REF] [\-\-json\-stdout]
+ruru mutants [\-\-base REF | \-\-all] [\-\-head REF] [\-\-json\-stdout]
 ruru verify  ID [\-\-base REF] [\-\-head REF] [\-\-test\-command CMD] [\-\-python PATH]
 ruru post    \-\-report PATH [\-\-pr N] [\-\-comment\-cap N] [\-\-repository OWNER/NAME] [\-\-event PATH]
 ruru mcp
@@ -42,6 +42,10 @@ Inside GitHub Actions (\fBGITHUB_ACTIONS=true\fR) ruru also appends the summary 
 \fB\-\-mode\fR picks what a failed gate does: \fBgate\fR fails the run, \fBadvise\fR never fails it, \fBauto\fR (the default) gates
 .PP
 changes written by an agent and advises on the rest.
+.IP \(bu 2
+\fB\-\-all\fR reviews the whole repository instead of a change: every source line is in scope, and the mutant cap
+.PP
+samples from all of them. The tamper audit and fail first need a base, so they are skipped. Use it to score a test suite, or on a repository's first commit.
 .IP \(bu 2
 \fB\-\-refactor\fR says the change is a refactor: tests should stay green on both sides, so fail first gives advice only.
 .IP \(bu 2
@@ -98,7 +102,7 @@ Each takes \fBrepo\fR (default: the server's working folder); the check tools al
 .SH THE THREE CHECKS
 .SS Tamper audit
 .PP
-ruru compares the base and head versions of every changed test module, \fBconftest.py\fR, test and coverage configuration, CI workflow and source file. Each finding is high severity unless it says otherwise.
+ruru compares the base and head versions of every changed test module, \fBconftest.py\fR, test and coverage configuration, CI workflow and source file. Each finding is high severity unless it says otherwise. A test that was renamed (most of its body kept, or a close name and half its body) is compared with its old self, so a rename is not a removal. Coverage \fBomit\fR and \fBexclude\fR lines count only when they change coverage configuration that already existed.
 .TP
 \fBtest\-removed\fR
 a test function that existed on the base is gone
@@ -122,7 +126,10 @@ a \fBpytest.approx\fR tolerance grew
 a \fBparametrize\fR list lost cases
 .TP
 \fBskip\-added\fR
-a new \fBskip\fR, \fBskipif\fR, \fBxfail\fR, \fBpytest.skip()\fR, \fBunittest.skip\fR, \fBimportorskip\fR or \fBpytestmark\fR
+a new \fBskip\fR, \fBxfail\fR, \fBunittest.skip\fR or \fBpytestmark\fR; medium when conditional: \fBskipif\fR,
+.TP
+
+\fBimportorskip\fR, or a \fBpytest.skip()\fR inside an \fBif\fR
 .TP
 \fBempty\-test\fR
 a new test asserts nothing and calls nothing

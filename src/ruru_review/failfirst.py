@@ -120,6 +120,7 @@ def check(
     tests: list[tuple[str, str, int, bool]],
     test_files: list[str],
     timeout: float,
+    packages: list[str] | None = None,
 ) -> list[TestVerdict]:
     """
     Run the changed tests at the head and at the base with the head's test files.
@@ -130,6 +131,8 @@ def check(
     :param tests: From :func:`changed_tests`
     :param test_files: The head's changed test files to lay over the base
     :param timeout: Seconds per run
+    :param packages: The changed packages; any missing at the base gets a stub that fails to import, so an installed
+        copy of the head's package cannot stand in for it
     :returns: One verdict per test
     """
     if not tests:
@@ -137,6 +140,11 @@ def check(
     ids = [t[0] for t in tests]
     head_proc, head_out, _ = run_selected(project, head_tree, ids, timeout)
     with gitio.Worktree(project.root, base_commit) as base_tree:
+        src_root = base_tree / project.src_root
+        for name in packages or []:
+            if not (src_root / name).exists() and not (src_root / f"{name}.py").exists():
+                (src_root / name).mkdir(parents=True, exist_ok=True)
+                (src_root / name / "__init__.py").write_text(f"raise ImportError('{MISSING_MARK}: {name}')\n")
         for rel in test_files:
             dest = base_tree / rel
             dest.parent.mkdir(parents=True, exist_ok=True)

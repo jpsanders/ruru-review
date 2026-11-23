@@ -1,6 +1,6 @@
 ---
 name: Bug report
-description: A check, a workflow or the rename that did not do what this README says
+description: ruru reported something wrong, missed something, or failed to run
 labels: ["bug"]
 body:
   - type: textarea
@@ -14,7 +14,7 @@ body:
     id: output
     attributes:
       label: Output
-      description: The failing output of `make checks` or the CI log. Remove anything private.
+      description: ruru's output or its `--json` items, and the diff if you can share it. Remove anything private.
       render: text
   - type: input
     id: python

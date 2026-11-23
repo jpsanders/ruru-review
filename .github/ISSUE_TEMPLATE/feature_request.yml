@@ -1,13 +1,13 @@
 ---
 name: Feature request
-description: A check, a workflow or a convention the template should carry
+description: An operator, a tamper rule, an agent integration or a workflow ruru should have
 labels: ["enhancement"]
 body:
   - type: textarea
     id: problem
     attributes:
       label: The problem
-      description: What goes wrong in a new package today, or what you add by hand every time.
+      description: What slips past review today, or what you check by hand on agent pull requests.
     validations:
       required: true
   - type: textarea

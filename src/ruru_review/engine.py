@@ -29,6 +29,7 @@ class Options:
     workers: int | None = None
     run_tests: bool = True
     run_mutants: bool = True
+    whole: bool = False
     labels: list[str] = field(default_factory=list)
     author: str | None = None
     branch: str | None = None
@@ -57,9 +58,19 @@ def resolve(opts: Options) -> Context:
     """
     root = gitio.toplevel(opts.repo)
     cfg = config.load(root)
-    base_ref = opts.base or cfg.base or gitio.default_base(root)
     head = gitio.resolve(root, opts.head) if opts.head else None
     head_sha = head or gitio.resolve(root, "HEAD")
+    if opts.whole:
+        return Context(
+            root,
+            cfg,
+            "(whole repository)",
+            gitio.EMPTY_TREE,
+            head,
+            head_sha,
+            gitio.changed_files(root, gitio.EMPTY_TREE, head),
+        )
+    base_ref = opts.base or cfg.base or gitio.default_base(root)
     mb = gitio.merge_base(root, base_ref, head)
     return Context(root, cfg, base_ref, mb, head, head_sha, gitio.changed_files(root, mb, head))
 
@@ -97,7 +108,8 @@ def detect_agent(ctx: Context, opts: Options) -> dict[str, Any]:
     labels = set(opts.labels) | {x for x in os.environ.get("RURU_PR_LABELS", "").split(",") if x}
     for label in sorted(labels & set(a.labels)):
         reasons.append(f"label {label}")
-    log = gitio.git(ctx.root, "log", "--format=%B%x00", f"{ctx.merge_base}..{ctx.head_sha}", check=False).lower()
+    span = ctx.head_sha if ctx.merge_base == gitio.EMPTY_TREE else f"{ctx.merge_base}..{ctx.head_sha}"
+    log = gitio.git(ctx.root, "log", "--format=%B%x00", span, check=False).lower()
     for t in a.trailers:
         if "co-authored-by:" in log and any(
             t.lower() in line for line in log.splitlines() if line.startswith("co-authored-by:")
@@ -188,7 +200,10 @@ def review(opts: Options, ctx: Context | None = None) -> dict[str, Any]:
     notes: list[str] = []
     items: list[dict[str, Any]] = []
 
-    findings = tamper.audit(ctx.root, ctx.merge_base, ctx.head, ctx.files, tdirs)
+    whole = ctx.merge_base == gitio.EMPTY_TREE
+    findings = [] if whole else tamper.audit(ctx.root, ctx.merge_base, ctx.head, ctx.files, tdirs)
+    if whole:
+        notes.append("whole repository: every source line is in scope; the tamper audit and fail first need a base")
     for f in findings:
         items.append(
             {
@@ -217,7 +232,7 @@ def review(opts: Options, ctx: Context | None = None) -> dict[str, Any]:
     limit = opts.max_mutants if opts.max_mutants is not None else cfg.max_mutants
     chosen, over = mutants.select(all_mutants, limit, ctx.head_sha)
 
-    tests = failfirst.changed_tests(ctx.root, ctx.merge_base, ctx.head, ctx.files, tdirs)
+    tests = [] if whole else failfirst.changed_tests(ctx.root, ctx.merge_base, ctx.head, ctx.files, tdirs)
     test_files = sorted(
         {t[1] for t in tests} | {f.new_path for f in ctx.files if f.new_path and pyast.is_test_file(f.new_path, tdirs)}
     )
@@ -242,9 +257,9 @@ def review(opts: Options, ctx: Context | None = None) -> dict[str, Any]:
             deadline = time.monotonic() + budget
             if tests:
                 say(f"fail first: {len(tests)} new or changed test(s)")
-                verdicts = failfirst.check(
-                    project, trees[0], ctx.merge_base, tests, test_files, max(60.0, 5 * base.seconds)
-                )
+                packages = runner.module_names([f.path for f in src_changes], project.src_root)
+                timeout = max(60.0, 5 * base.seconds)
+                verdicts = failfirst.check(project, trees[0], ctx.merge_base, tests, test_files, timeout, packages)
             if chosen and opts.run_mutants:
                 say(f"mutants: {len(chosen)} of {len(all_mutants)}")
                 results = runner.run_mutants(

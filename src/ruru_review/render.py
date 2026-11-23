@@ -21,7 +21,8 @@ def terminal(report: dict[str, Any], limit: int = 20) -> str:
     m, ff, t, g = s["mutants"], s["fail_first"], s["tamper"], s["gate"]
     head = report["head"]
     lines = [
-        f"ruru {report['tool']['version']}  base {report['base']['ref']} ({report['base']['merge_base'][:10]})  "
+        f"ruru {report['tool']['version']}  base {report['base']['ref']}"
+        f"{'' if report['base']['ref'].startswith('(') else ' (' + report['base']['merge_base'][:10] + ')'}  "
         f"head {'working tree' if head['working_tree'] else head['sha'][:10]}",
         f"  tamper      {t['high']} high, {t['medium']} medium",
         f"  fail first  {ff['tests']} test(s): {ff['proves_change'] + ff['needs_new_code']} prove the change, "

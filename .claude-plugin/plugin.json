@@ -1,7 +1,7 @@
 {
   "name": "ruru",
   "description": "A reviewer for code your agent writes: before it says done, ruru checks that new tests fail without the change, that they catch bugs planted in the changed lines, and that no test was weakened. An MCP server and a skill.",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "author": {
     "name": "James Phillip Sanders",
     "email": "hello@jamesphillipsanders.com",

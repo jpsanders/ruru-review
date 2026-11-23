@@ -1,26 +1,21 @@
 # Opt in: block "done" while the gate fails
 
-A Claude Code Stop hook runs when the agent tries to finish. This one runs `ruru check --mode gate` and, when the
-gate fails, tells the agent why and keeps it working. Add it to `.claude/settings.json` in the project:
+A Claude Code Stop hook runs when the agent tries to finish. [`ruru-stop-hook.sh`](ruru-stop-hook.sh) runs
+`ruru check --mode gate` and, when the gate fails, tells the agent why and keeps it working.
+
+Copy the script into the project, for example to `.claude/hooks/ruru-stop-hook.sh`, make it executable, and add
+this to `.claude/settings.json`:
 
 ```json
 {
   "hooks": {
     "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "out=$(ruru check --mode gate --quiet --max-mutants 30 --time-budget 240 2>&1); code=$?; if [ $code -eq 1 ]; then printf '%s\\n' \"$out\" >&2; exit 2; fi; exit 0",
-            "timeout": 300
-          }
-        ]
-      }
+      { "hooks": [{ "type": "command", "command": ".claude/hooks/ruru-stop-hook.sh", "timeout": 300 }] }
     ]
   }
 }
 ```
 
-Exit code 2 from a Stop hook blocks the stop and shows stderr to the agent. ruru's own exit code 2 (an environment
-problem) is let through here, so a broken environment never traps the agent in a loop. Keep the budget small: the
-hook runs every time the agent stops.
+ruru must be on `PATH` (`uv tool install ruru-review`). Keep the budget small: the hook runs every time the agent
+stops. ruru's own exit code 2 (an environment problem) is let through, so a broken environment never traps the agent
+in a loop.

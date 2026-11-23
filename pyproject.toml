@@ -17,7 +17,7 @@ license-files = ["LICENSE"]
 requires-python = ">=3.14"
 keywords = ["mutation-testing", "code-review", "pull-request", "ai-agents", "pytest", "github-actions", "mcp", "claude-code", "testing"]
 classifiers = [
-  "Development Status :: 4 - Beta",
+  "Development Status :: 5 - Production/Stable",
   "Intended Audience :: Developers",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.14",
@@ -58,6 +58,7 @@ ruru = "ruru_review.cli:main"
 
 [tool.setuptools_scm]
 fallback_version = "0.0.0"
+version_file = "src/ruru_review/_version.py"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -80,10 +81,12 @@ ignore_missing_imports = true
 profile = "black"
 line_length = 120
 known_first_party = ["ruru_review"]
+extend_skip = ["_version.py"]
 
 [tool.black]
 line-length = 120
 include = '\.pyi?$'
+extend-exclude = '_version\.py'
 exclude = '''
 /(
       venv
