@@ -77,7 +77,15 @@ def validate(report: Any) -> dict[str, Any]:
         | {"score": clean_score},
         "fail_first": {
             k: num(ff, k)
-            for k in ("tests", "proves_change", "needs_new_code", "passes_without_change", "fails_on_head", "not_run")
+            for k in (
+                "tests",
+                "proves_change",
+                "needs_new_code",
+                "passes_without_change",
+                "new_passes_without_change",
+                "fails_on_head",
+                "not_run",
+            )
         },
         "tamper": {"high": num(t, "high"), "medium": num(t, "medium")},
         "gate": {

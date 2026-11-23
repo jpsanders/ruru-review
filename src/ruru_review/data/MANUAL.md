@@ -151,7 +151,8 @@ name does not hide every other test in the file.
 |---|---|
 | `proves_change` | fails on the base, passes at the head |
 | `needs_new_code` | fails on the base because it uses code the change adds |
-| `passes_without_change` | passes on both sides: it does not prove the change (a finding) |
+| `passes_without_change` | passes on both sides: it does not prove the change. High for a new test, medium for |
+| | an edited one (it may strengthen old behaviour); advice only when the change touches no source |
 | `fails_on_head` | does not pass at the head; reported, not scored |
 | `not_run` | skipped or not collected |
 
@@ -203,9 +204,9 @@ a listed co author trailer, when the branch starts with `claude/`, `copilot/`, `
 (`GITHUB_HEAD_REF` in Actions, else the current branch), or when it has an `agent` label (`--label`, or
 `RURU_PR_LABELS`, comma separated). Every list lives in `[tool.ruru.agents]`.
 
-The gate fails on any high tamper finding, on any new or changed test that passes without the change (unless
-`--refactor`), or on a mutation score under 70% with at least 5 mutants run. In `auto` mode it is enforced for agent
-changes only; for people it gives the same findings as advice.
+The gate fails on any high tamper finding, on any new test that passes without the change (unless `--refactor`,
+or the change touches no source), or on a mutation score under 70% with at least 5 mutants run. In `auto` mode it
+is enforced for agent changes only; for people it gives the same findings as advice.
 
 ## Report
 

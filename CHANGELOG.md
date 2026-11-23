@@ -10,6 +10,9 @@ The first release.
 - A renamed test is compared with its old self instead of being reported as removed.
 - `skipif`, `importorskip` and a skip inside an `if` are medium findings; a bare skip or xfail stays high.
 - Coverage `omit` and `exclude` lines count as tamper only when they change existing coverage configuration.
+- Fail first gates on new tests that pass without the change; an edited old test that passes on both sides is
+  medium, and a change with no source (new tests for existing code) gets advice only.
+- GitHub's pull request variables apply only when ruru reviews the CI checkout itself.
 - Fail first stubs a package that does not exist at the base, so an installed copy cannot stand in for it.
 - The command line imports only what each command needs: `ruru --version` starts in about 40 ms.
 - Coverage based test selection forces coverage's ctrace core, because the sysmon core (the default on Python 3.14

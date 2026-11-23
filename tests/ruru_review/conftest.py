@@ -152,3 +152,23 @@ def py() -> str:
     :returns: Its path
     """
     return sys.executable
+
+
+@pytest.fixture(autouse=True)
+def no_ci_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Run every test as if outside CI, even inside a pull request job.
+
+    :param monkeypatch: Pytest's monkeypatch
+    """
+    for name in (
+        "GITHUB_ACTIONS",
+        "GITHUB_HEAD_REF",
+        "GITHUB_WORKSPACE",
+        "GITHUB_OUTPUT",
+        "GITHUB_STEP_SUMMARY",
+        "GITHUB_EVENT_PATH",
+        "RURU_PR_AUTHOR",
+        "RURU_PR_LABELS",
+    ):
+        monkeypatch.delenv(name, raising=False)

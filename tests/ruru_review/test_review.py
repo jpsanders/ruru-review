@@ -36,6 +36,15 @@ def test_weak_agent_pr(make_repo: Repo, py: str, tmp_path: Path) -> None:
         "test_discount_runs": "needs_new_code",
         "test_add_commutes": "passes_without_change",
     }
+    severity = {i["tests"][0].split("::")[1]: i["severity"] for i in r["items"] if i["check"] == "fail_first"}
+    assert severity == {
+        "test_add": "medium",
+        "test_add_identity": "medium",
+        "test_negative": "info",
+        "test_discount_runs": "info",
+        "test_add_commutes": "high",
+    }
+    assert "1 new test(s) pass without the change" in s["gate"]["reasons"]
     survivors = {(i["file"], i["line"], i["rule"]) for i in r["items"] if i["outcome"] == "survived"}
     assert ("src/calc/__init__.py", 15, "ROR") in survivors
     assert ("src/calc/__init__.py", 17, "AOR") in survivors
@@ -240,3 +249,35 @@ def test_new_package_cannot_borrow_an_installed_copy(make_repo: Repo, py: str, t
     code, r = check(repo, py, tmp_path, "--head", "HEAD", "--max-mutants", "0")
     outcomes = {i["outcome"] for i in r["items"] if i["check"] == "fail_first"}
     assert outcomes == {"needs_new_code"}
+
+
+def test_ci_variables_apply_only_to_the_ci_checkout(
+    make_repo: Repo, py: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(branch="feature/x")
+    monkeypatch.setenv("GITHUB_HEAD_REF", "claude/from-ci")
+    monkeypatch.setenv("GITHUB_WORKSPACE", str(tmp_path / "elsewhere"))
+    _, r = check(repo, py, tmp_path, "--head", "HEAD", "--max-mutants", "0")
+    assert r["agent"]["agent"] is False
+    monkeypatch.setenv("GITHUB_WORKSPACE", str(repo))
+    _, r = check(repo, py, tmp_path, "--head", "HEAD", "--max-mutants", "0")
+    assert r["agent"]["reasons"] == ["branch claude/from-ci"]
+    monkeypatch.setenv("GITHUB_HEAD_REF", "feature/x")
+    monkeypatch.setenv("RURU_PR_AUTHOR", "copilot-swe-agent[bot]")
+    monkeypatch.setenv("RURU_PR_LABELS", "bug,agent")
+    _, r = check(repo, py, tmp_path, "--head", "HEAD", "--max-mutants", "0")
+    assert r["agent"]["reasons"] == ["author copilot-swe-agent[bot]", "label agent"]
+    _, r = check(repo, py, tmp_path, "--head", "HEAD", "--max-mutants", "0", "--label", "x")
+    assert "label agent" in r["agent"]["reasons"]
+
+
+def test_tests_for_existing_code_are_not_gated(make_repo: Repo, py: str, tmp_path: Path) -> None:
+    from tests.ruru_review.conftest import BASE_TESTS
+
+    repo = make_repo(
+        head={"tests/test_calc.py": BASE_TESTS + "\n\ndef test_parity_zero():\n    assert parity(0) == 'even'\n"}
+    )
+    code, r = check(repo, py, tmp_path, "--head", "HEAD", "--mode", "gate")
+    assert code == 0 and r["summary"]["fail_first"]["advice_only"] is True
+    assert r["summary"]["fail_first"]["passes_without_change"] == 1
+    assert {i["severity"] for i in r["items"] if i["check"] == "fail_first"} == {"info"}
