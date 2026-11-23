@@ -133,7 +133,7 @@ jobs:
       - run: python -m pip install -e . pytest pytest-cov
       - uses: jpsanders/ruru-review@1.0.0
         with: { report: ruru/ruru-report.json }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with: { name: ruru-report, path: ruru/ }
 ```
