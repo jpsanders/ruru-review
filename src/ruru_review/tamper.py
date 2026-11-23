@@ -6,6 +6,7 @@ workflows and source pragmas.
 """
 
 import ast
+import difflib
 import re
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -123,22 +124,61 @@ def _assert_count(node: ast.AST) -> int:
     return s + w
 
 
-def _skips(node: ast.AST) -> list[str]:
+CONDITIONAL_SKIPS = {"skipif", "skipIf", "skipUnless", "importorskip"}
+
+
+def _skip_counts(node: ast.AST, in_if: bool = False) -> tuple[int, int]:
     """
-    Names of skip and xfail markers or calls in a node, each counted once.
+    Count skip and xfail markers or calls, split into unconditional and conditional ones.
+
+    ``skipif``, ``importorskip`` and a ``pytest.skip()`` inside an ``if`` are conditional: they usually guard a missing
+    tool or platform. A bare ``skip`` or ``xfail`` turns a test off everywhere.
 
     :param node: Any node
-    :returns: Such as ``pytest.mark.skip``
+    :param in_if: Whether ``node`` sits inside an ``if``
+    :returns: (unconditional, conditional)
     """
-    out = []
-    for n in ast.walk(node):
-        if isinstance(n, ast.Attribute):
-            name = pyast.dotted(n)
-            if n.attr in SKIP_NAMES and name.split(".", 1)[0] in {"pytest", "unittest", "mark"}:
-                out.append(name)
-        elif isinstance(n, ast.Name) and n.id in SKIP_NAMES:
-            out.append(n.id)
-    return out
+    hard = soft = 0
+    if isinstance(node, ast.Attribute) or isinstance(node, ast.Name):
+        name = pyast.dotted(node)
+        last = name.rsplit(".", 1)[-1]
+        if last in SKIP_NAMES and (
+            isinstance(node, ast.Name) or name.split(".", 1)[0] in {"pytest", "unittest", "mark"}
+        ):
+            if last in CONDITIONAL_SKIPS or in_if:
+                soft += 1
+            else:
+                hard += 1
+        if isinstance(node, ast.Attribute):
+            return hard, soft  # the chain below names the same marker
+    for child in ast.iter_child_nodes(node):
+        h, c = _skip_counts(child, in_if or isinstance(node, ast.If))
+        hard, soft = hard + h, soft + c
+    return hard, soft
+
+
+def _skips(node: ast.AST) -> list[str]:
+    """
+    Name every skip and xfail in a node, conditional or not.
+
+    :param node: Any node
+    :returns: One entry per marker or call
+    """
+    hard, soft = _skip_counts(node)
+    return ["skip"] * hard + ["skipif"] * soft
+
+
+def _similar(a: ast.AST, b: ast.AST) -> float:
+    """
+    Compare two test functions' bodies, ignoring their names.
+
+    :param a: A function
+    :param b: Another
+    :returns: A ratio from 0 to 1
+    """
+    body_a = "\n".join(ast.unparse(x) for x in getattr(a, "body", []))
+    body_b = "\n".join(ast.unparse(x) for x in getattr(b, "body", []))
+    return difflib.SequenceMatcher(None, body_a, body_b, autojunk=False).ratio()
 
 
 def _approx(node: ast.AST) -> list[float]:
@@ -180,15 +220,28 @@ def _parametrize_cases(node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
     return total
 
 
-def _module_skips(tree: ast.Module | None) -> int:
-    if tree is None:
-        return 0
-    n = 0
-    for stmt in tree.body:
-        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            continue
-        n += len(_skips(stmt))
-    return n
+def _module_skips(tree: ast.Module | None) -> tuple[int, int]:
+    """
+    Count module level skips (``pytestmark``, ``importorskip``), unconditional and conditional.
+
+    :param tree: A module
+    :returns: (unconditional, conditional)
+    """
+    hard = soft = 0
+    for stmt in tree.body if tree is not None else []:
+        if not isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            h, c = _skip_counts(stmt)
+            hard, soft = hard + h, soft + c
+    return hard, soft
+
+
+def _module_skip_findings(path: str, b_tree: ast.Module | None, a_tree: ast.Module | None, what: str) -> list[Finding]:
+    (bh, bc), (ah, ac) = _module_skips(b_tree), _module_skips(a_tree)
+    if ah > bh:
+        return [Finding("skip-added", HIGH, path, 1, "RIGHT", f"{what} gained a skip that turns tests off")]
+    if ac > bc:
+        return [Finding("skip-added", MEDIUM, path, 1, "RIGHT", f"{what} gained a conditional skip")]
+    return []
 
 
 def audit_test_file(path: str, old_path: str | None, before: str | None, after: str | None) -> list[Finding]:
@@ -204,20 +257,41 @@ def audit_test_file(path: str, old_path: str | None, before: str | None, after: 
     out: list[Finding] = []
     b_tree, a_tree = pyast.parse(before), pyast.parse(after)
     b_fns, a_fns = pyast.test_functions(b_tree), pyast.test_functions(a_tree)
+    renamed: dict[str, str] = {}  # new name to old name
+    gone = [n for n in b_fns if n not in a_fns]
+    fresh = [n for n in a_fns if n not in b_fns]
+    for old_name in gone:
+        # a rename keeps most of the body, or a close name and half the body
+        scored = []
+        for n in fresh:
+            if n in renamed:
+                continue
+            body = _similar(b_fns[old_name], a_fns[n])
+            name_ratio = difflib.SequenceMatcher(None, old_name, n).ratio()
+            if body >= 0.75 or (name_ratio >= 0.6 and body >= 0.5):
+                scored.append((body + name_ratio, n))
+        if scored:
+            renamed[max(scored)[1]] = old_name
     for name, fn in b_fns.items():
-        if name not in a_fns:
+        if name not in a_fns and name not in renamed.values():
             out.append(Finding("test-removed", HIGH, old_path or path, fn.lineno, "LEFT", f"test {name} was removed"))
     for name, fn in a_fns.items():
-        old = b_fns.get(name)
+        old = b_fns.get(name) or (b_fns[renamed[name]] if name in renamed else None)
+        if name in renamed:
+            name = f"{name} (renamed from {renamed[name]})"
         if old is None:
-            if _skips(fn):
+            hard, soft = _skip_counts(fn)
+            if hard or soft:
+                why = "is skipped or xfailed" if hard else "is skipped under a condition"
                 out.append(
-                    Finding("skip-added", HIGH, path, fn.lineno, "RIGHT", f"new test {name} is skipped or xfailed")
+                    Finding("skip-added", HIGH if hard else MEDIUM, path, fn.lineno, "RIGHT", f"new test {name} {why}")
                 )
             if fn.body and not _assert_count(fn) and not _calls(fn):
                 out.append(Finding("empty-test", HIGH, path, fn.lineno, "RIGHT", f"new test {name} asserts nothing"))
             continue
-        if pyast.dump(old) == pyast.dump(fn):
+        if [pyast.dump(x) for x in old.body + old.decorator_list] == [
+            pyast.dump(x) for x in fn.body + fn.decorator_list
+        ]:
             continue
         bs, bw, _ = _strength(old)
         as_, aw, aw_text = _strength(fn)
@@ -247,8 +321,11 @@ def audit_test_file(path: str, old_path: str | None, before: str | None, after: 
             )
         if any("assert True" == t for t in aw_text) and not any("assert True" == t for t in _strength(old)[2]):
             out.append(Finding("assert-true", HIGH, path, fn.lineno, "RIGHT", f"{name} now asserts True"))
-        if len(_skips(fn)) > len(_skips(old)):
+        (bh, bc), (ah, ac) = _skip_counts(old), _skip_counts(fn)
+        if ah > bh:
             out.append(Finding("skip-added", HIGH, path, fn.lineno, "RIGHT", f"{name} gained a skip or xfail"))
+        elif ac > bc:
+            out.append(Finding("skip-added", MEDIUM, path, fn.lineno, "RIGHT", f"{name} gained a conditional skip"))
         bw_try, bw_pass = _swallowed(old)
         aw_try, aw_pass = _swallowed(fn)
         if aw_try > bw_try:
@@ -285,10 +362,7 @@ def audit_test_file(path: str, old_path: str | None, before: str | None, after: 
                     str(max(a_ap)),
                 )
             )
-    if _module_skips(a_tree) > _module_skips(b_tree):
-        out.append(
-            Finding("skip-added", HIGH, path, 1, "RIGHT", "the module gained a skip (pytestmark or importorskip)")
-        )
+    out += _module_skip_findings(path, b_tree, a_tree, "the module")
     return out
 
 
@@ -317,8 +391,7 @@ def audit_conftest(path: str, before: str | None, after: str | None) -> list[Fin
         if name not in b
     ]
     b_tree, a_tree = pyast.parse(before), pyast.parse(after)
-    if a_tree is not None and _module_skips(a_tree) > _module_skips(b_tree):
-        out.append(Finding("skip-added", HIGH, path, 1, "RIGHT", "conftest gained a skip"))
+    out += _module_skip_findings(path, b_tree, a_tree, "conftest")
     return out
 
 
@@ -355,9 +428,11 @@ def audit_config(path: str, before: str | None, after: str | None, added: set[in
                         line.strip(),
                     )
                 )
-        if re.search(r"^\s*(omit|exclude_lines|exclude_also)\b", line) or (
+        had_coverage = before is not None and "coverage" in before
+        omits = re.search(r"^\s*(omit|exclude_lines|exclude_also)\b", line) or (
             line.strip().startswith(('"', "'")) and "cover" in path
-        ):
+        )
+        if had_coverage and omits:
             out.append(
                 Finding("coverage-omit", HIGH, path, n, "RIGHT", "coverage now leaves code out", "", line.strip())
             )

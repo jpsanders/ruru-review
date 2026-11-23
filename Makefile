@@ -1,7 +1,7 @@
 SRC := src
 TESTS := tests
 SCRIPTS := scripts
-ROOT_EC_FILES := $(wildcard *.yaml *.yml *.md) .github
+ROOT_EC_FILES := $(wildcard *.yaml *.yml *.md *.txt) .github docs examples skills
 PACKAGE := ruru_review
 DOCKER_IMAGE := ruru-review:latest
 
@@ -121,4 +121,15 @@ clean:
 
 # Run all checking tools
 .PHONY: checks
-checks: isort-check black-check ec docstyle lint mypy bandit man-check pytest
+checks: isort-check black-check ec docstyle lint mypy bandit man-check pytest ruru
+
+# ruru reviews its own change against main, from this checkout. `make checks RURU=:` skips it.
+RURU ?= python -m ruru_review
+RURU_BASE ?= origin/main
+RURU_MODE ?= gate
+
+.PHONY: ruru
+ruru:
+	@echo
+	@echo --- ruru: tamper audit, fail first and mutants on the change ---
+	$(RURU) check --base $(RURU_BASE) --mode $(RURU_MODE)

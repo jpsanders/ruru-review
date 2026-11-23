@@ -24,7 +24,12 @@ def rules(before: str | None, after: str | None) -> list[str]:
             "def test_a():\n    assert True\n",
             ["assertion-loosened", "assert-true"],
         ),
-        ("def test_a():\n    assert f() == 1\n", "def test_b():\n    assert f() == 1\n", ["test-removed"]),
+        ("def test_a():\n    assert f() == 1\n", "def test_b():\n    assert f() == 1\n", []),
+        (
+            "def test_a():\n    assert f() == 1\n",
+            "def test_parse_json_file():\n    data = load('data.json')\n    assert data['k'] == [1, 2]\n",
+            ["test-removed"],
+        ),
         (
             "def test_a():\n    assert f() == 1\n",
             "import pytest\n@pytest.mark.skip\ndef test_a():\n    assert f() == 1\n",
@@ -124,3 +129,39 @@ def test_parse_diff() -> None:
     assert (a.path, a.added) == ("a.py", {3, 4, 11})
     assert (r.old_path, r.new_path, r.added) == ("old.py", "new.py", set())
     assert (g.new_path, g.path, g.removed) == (None, "gone.py", {1, 2})
+
+
+def test_renamed_test_is_compared_not_removed() -> None:
+    before = "def test_room_temp_low():\n    x = read()\n    assert x.low == 18\n    assert x.high == 21\n"
+    after = "def test_room_low():\n    x = read()\n    assert x.low == 18\n"
+    found = tamper.audit_test_file("t.py", "t.py", before, after)
+    assert [(f.rule, f.message) for f in found] == [
+        ("assertion-removed", "test_room_low (renamed from test_room_temp_low) has 1 fewer assertion(s) than before")
+    ]
+
+
+def test_conditional_skips_are_medium() -> None:
+    base = "def test_a():\n    assert f() == 1\n"
+    cond = (
+        "import shutil\n@pytest.mark.skipif(shutil.which('git') is None, reason='git')\n"
+        "def test_a():\n    assert f() == 1\n"
+    )
+    inside = "def test_a():\n    if not ok():\n        pytest.skip('no')\n    assert f() == 1\n"
+    new = "@pytest.mark.skipif(True, reason='x')\ndef test_new():\n    assert f() == 1\n"
+    for after in (cond, inside):
+        assert [(f.rule, f.severity) for f in tamper.audit_test_file("t.py", "t.py", base, after)] == [
+            ("skip-added", "medium")
+        ]
+    assert [(f.rule, f.severity) for f in tamper.audit_test_file("t.py", "t.py", base, base + new)] == [
+        ("skip-added", "medium")
+    ]
+    mod = "pytest.importorskip('numpy')\n" + base
+    assert [(f.rule, f.severity) for f in tamper.audit_test_file("t.py", "t.py", base, mod)] == [
+        ("skip-added", "medium")
+    ]
+
+
+def test_new_coverage_config_is_not_tampering() -> None:
+    after = "[tool.coverage.run]\nomit = ['src/x/__main__.py']\n"
+    assert tamper.audit_config("pyproject.toml", "[project]\nname = 'x'\n", after, {1, 2}) == []
+    assert tamper.audit_config("pyproject.toml", None, after, {1, 2}) == []

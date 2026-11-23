@@ -2,7 +2,18 @@
 
 Versions follow [semantic versioning](https://semver.org). Tags carry the bare version, such as `1.0.0`.
 
-## Unreleased
+## 1.0.0 (2026-11-21)
+
+The first release.
+
+- `ruru check --all` scores a whole repository's tests; `ruru mutants --all` lists every mutant.
+- A renamed test is compared with its old self instead of being reported as removed.
+- `skipif`, `importorskip` and a skip inside an `if` are medium findings; a bare skip or xfail stays high.
+- Coverage `omit` and `exclude` lines count as tamper only when they change existing coverage configuration.
+- Fail first stubs a package that does not exist at the base, so an installed copy cannot stand in for it.
+- The command line imports only what each command needs: `ruru --version` starts in about 40 ms.
+- Coverage based test selection forces coverage's ctrace core, because the sysmon core (the default on Python 3.14
+  and later) records only the first test to reach each line.
 
 - `ruru check`: the tamper audit, fail first and mutants on the diff, with a JSON report (schema `ruru.report/1`),
   a Markdown summary and the GitHub job summary.

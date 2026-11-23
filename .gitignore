@@ -16,3 +16,4 @@ __pycache__
 /.venv
 /.idea
 /src/*.egg-info
+src/ruru_review/_version.py

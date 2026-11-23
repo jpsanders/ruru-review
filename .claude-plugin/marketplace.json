@@ -10,7 +10,7 @@
     {
       "name": "ruru",
       "description": "Before your agent says done: fail first, mutants on the diff and a tamper audit of the tests, with a verify loop.",
-      "version": "0.1.0",
+      "version": "1.0.0",
       "source": "./",
       "category": "development",
       "homepage": "https://github.com/jpsanders/ruru-review"
